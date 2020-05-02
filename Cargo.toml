@@ -1,0 +1,14 @@
+[package]
+name = "mpu6000"
+version = "0.0.3"
+authors = ["qiuchengxuan <qiuchengxuan@gmail.com>"]
+edition = "2018"
+
+description = "Platform agnostic driver for MPU6000 6-axis IMU"
+repository = "https://github.com/qiuchengxuan/mpu6000"
+readme = "README.md"
+keywords = ["mpu6000", "imu", "embedded"]
+license = "Apache-2.0"
+
+[dependencies]
+nalgebra = {version = "0.21", default-features = false}
