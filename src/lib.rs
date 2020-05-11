@@ -1,3 +1,4 @@
+#![no_std]
 #[macro_use]
 pub mod registers;
 
@@ -34,7 +35,7 @@ impl<'a, E> MPU6000<'a, E> {
     }
 
     pub fn read_byte(&self, reg: Register) -> Result<u8, E> {
-        let mut buf: [u8; 1] = [0; 1];
+        let mut buf = [0u8; 1];
         let bus = self.bus.get();
         bus.write_read(&[reg as u8], &mut buf)?;
         Ok(buf[0])
@@ -60,7 +61,7 @@ impl<'a, E> MPU6000<'a, E> {
     }
 
     pub(crate) fn read_vector3(&self, reg: Register) -> Result<Vector3<u32>, E> {
-        let mut buf: [u8; 6] = [0; 6];
+        let mut buf = [0u8; 6];
         self.read_into(reg.into(), &mut buf)?;
         Ok(Vector3::<u32>::new(
             u16::from_be_bytes([buf[0], buf[1]]) as u32,
@@ -124,7 +125,7 @@ impl<'a, E> MPU6000<'a, E> {
 impl<'a, E> MPU6000<'a, E> {
     /// Temperature in centi degrees celcius
     pub fn get_temperature(&self) -> Result<u16, E> {
-        let mut buf: [u8; 2] = [0; 2];
+        let mut buf = [0u8; 2];
         self.read_into(Register::TemperatureHigh, &mut buf)?;
         Ok((u16::from_be_bytes(buf) as u32 * 100 / 340 + 3653) as u16)
     }
