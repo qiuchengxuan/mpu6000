@@ -1,7 +1,7 @@
 MPU6000
 =======
 
-Not tested yet
+Able to detect chip so far...
 
 [DATASHEET][DATASHEET] | [REGISTER MAP][REGISTER_MAP]
 
@@ -12,15 +12,18 @@ Example
 =======
 
 ```rust
+use embedded_hal::blocking::delay::DelayMs;
 use mpu6000::{Bus, DelayMs, MPU6000};
 use mpu6000::registers::{AccelerometerSensitive, GyroSensitive};
 ...
-// impl Bus...
-// impl DelayMs...
+// create SPI that implemented embedded_hal::blocking::spi::Write + Transfer
+// create OutputPin as Chip Select that impelmented embedded_hal::digital::v2::OutputPin
+// create Delay that implemented embedded_hal::blocking::delay::DelayMs
 ...
-let mpu6000 = MPU6000::new(&bus, delay);
-mpu6000.reset()?;
-mpu6000.wake()?;
+let mut spi_bus: SpiBus<SPI, OutputPin> = SpiBus::new(spi, output_pin);
+let mpu6000 = MPU6000::new(&mut spi_bus);
+mpu6000.reset(&delay)?;
+mpu6000.wake(&delay)?;
 mpu6000.set_accelerometer_sensitive(accelerometer_sensitive!(+/-16g, 2048/LSB))?;
 mpu6000.set_gyro_sensitive(gyro_sensitive!(+/-2000dps, 16.4LSB/dps))?;
 ```

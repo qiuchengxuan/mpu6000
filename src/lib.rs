@@ -4,6 +4,7 @@ pub mod registers;
 
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::spi::{self};
+use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::{Mode, Phase, Polarity};
 use nalgebra::Vector3;
 
@@ -23,29 +24,72 @@ pub trait Bus<E> {
     fn reads(&mut self, reg: Register, output: &mut [u8]) -> Result<(), E>;
 }
 
-pub struct SpiBus<SPI: spi::Transfer<u8> + spi::Write<u8>>(SPI);
+pub enum SpiError<WE, TE, OE> {
+    WriteError(WE),
+    TransferError(TE),
+    OutputPinError(OE),
+}
 
-impl<SPI: spi::Transfer<u8> + spi::Write<u8>> From<SPI> for SpiBus<SPI> {
-    fn from(spi: SPI) -> SpiBus<SPI> {
-        SpiBus(spi)
+pub struct SpiBus<SPI, CS> {
+    spi: SPI,
+    cs: CS,
+}
+
+impl<SPI: spi::Transfer<u8> + spi::Write<u8>, CS: OutputPin> SpiBus<SPI, CS> {
+    pub fn new(spi: SPI, cs: CS) -> Self {
+        Self { spi, cs }
     }
 }
 
-impl<E, SPI: spi::Transfer<u8, Error = E> + spi::Write<u8, Error = E>> Bus<E> for SpiBus<SPI> {
-    fn write(&mut self, reg: Register, value: u8) -> Result<(), E> {
-        self.0.write(&[reg as u8, value])
+impl<WE, TE, OE, SPI, CS> SpiBus<SPI, CS>
+where
+    SPI: spi::Transfer<u8, Error = TE> + spi::Write<u8, Error = WE>,
+    CS: OutputPin<Error = OE>,
+{
+    fn chip_select(&mut self, select: bool) -> Result<(), SpiError<WE, TE, OE>> {
+        if select {
+            self.cs.set_low()
+        } else {
+            self.cs.set_high()
+        }
+        .map_err(|e| SpiError::OutputPinError(e))
+    }
+}
+
+impl<WE, TE, OE, SPI, CS> Bus<SpiError<WE, TE, OE>> for SpiBus<SPI, CS>
+where
+    SPI: spi::Transfer<u8, Error = TE> + spi::Write<u8, Error = WE>,
+    CS: OutputPin<Error = OE>,
+{
+    fn write(&mut self, reg: Register, value: u8) -> Result<(), SpiError<WE, TE, OE>> {
+        self.chip_select(true)?;
+        let result = self.spi.write(&[reg as u8, value]);
+        self.chip_select(false)?;
+        result.map_err(|e| SpiError::WriteError(e))
     }
 
-    fn read(&mut self, reg: Register) -> Result<u8, E> {
+    fn read(&mut self, reg: Register) -> Result<u8, SpiError<WE, TE, OE>> {
         let mut value = [0u8];
-        self.0.write(&[reg as u8 | 0x80])?;
-        self.0.transfer(&mut value)?;
+        self.chip_select(true)?;
+        self.spi
+            .write(&[reg as u8 | 0x80])
+            .map_err(|e| SpiError::WriteError(e))?;
+        self.spi
+            .transfer(&mut value)
+            .map_err(|e| SpiError::TransferError(e))?;
+        self.chip_select(false)?;
         Ok(value[0])
     }
 
-    fn reads(&mut self, reg: Register, output: &mut [u8]) -> Result<(), E> {
-        self.0.write(&[reg as u8 | 0x80])?;
-        self.0.transfer(output)?;
+    fn reads(&mut self, reg: Register, output: &mut [u8]) -> Result<(), SpiError<WE, TE, OE>> {
+        self.chip_select(true)?;
+        self.spi
+            .write(&[reg as u8 | 0x80])
+            .map_err(|e| SpiError::WriteError(e))?;
+        self.spi
+            .transfer(output)
+            .map_err(|e| SpiError::TransferError(e))?;
+        self.chip_select(false)?;
         Ok(())
     }
 }
@@ -109,7 +153,7 @@ impl<'a, E> MPU6000<'a, E> {
         }
     }
 
-    /// Required when connected via SPI
+    /// Required when connected via BUS
     pub fn reset<D: DelayMs<u8>>(&mut self, delay: &mut D) -> Result<(), E> {
         let reset_bit = PowerManagement1::DeviceReset as u8;
         self.bus.write(Register::PowerManagement1, reset_bit)?;
@@ -189,6 +233,7 @@ impl<'a, E> MPU6000<'a, E> {
 
 mod test {
     use embedded_hal::blocking::spi::{Transfer, Write};
+    use embedded_hal::digital::v2::OutputPin;
 
     use crate::DelayMs;
 
@@ -208,26 +253,38 @@ mod test {
         }
     }
 
+    struct StubOutputPin {}
+    impl OutputPin for StubOutputPin {
+        type Error = &'static str;
+        fn set_high(&mut self) -> Result<(), &'static str> {
+            Ok(())
+        }
+
+        fn set_low(&mut self) -> Result<(), &'static str> {
+            Ok(())
+        }
+    }
+
     struct Nodelay {}
     impl DelayMs<u8> for Nodelay {
         fn delay_ms(&mut self, _ms: u8) {}
     }
 
     #[test]
-    fn test_functional() -> Result<(), &'static str> {
+    fn test_functional() {
         extern crate std;
 
         use crate::registers::{AccelerometerSensitive, GyroSensitive};
         use crate::{SpiBus, MPU6000};
 
-        let bus = StubSPI {};
+        let spi = StubSPI {};
+        let output_pin = StubOutputPin {};
         let mut delay = Nodelay {};
-        let mut spi_bus: SpiBus<StubSPI> = bus.into();
+        let mut spi_bus: SpiBus<StubSPI, StubOutputPin> = SpiBus::new(spi, output_pin);
         let mut mpu6000 = MPU6000::new(&mut spi_bus);
-        mpu6000.reset(&mut delay)?;
-        mpu6000.wake(&mut delay)?;
-        mpu6000.set_accelerometer_sensitive(accelerometer_sensitive!(+/-16g, 2048/LSB))?;
-        mpu6000.set_gyro_sensitive(gyro_sensitive!(+/-2000dps, 16.4LSB/dps))?;
-        Ok(())
+        let _ = mpu6000.reset(&mut delay);
+        let _ = mpu6000.wake(&mut delay);
+        let _ = mpu6000.set_accelerometer_sensitive(accelerometer_sensitive!(+/-16g, 2048/LSB));
+        let _ = mpu6000.set_gyro_sensitive(gyro_sensitive!(+/-2000dps, 16.4LSB/dps));
     }
 }
