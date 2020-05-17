@@ -2,7 +2,9 @@
 #[macro_use]
 pub mod registers;
 
-use core::cell::Cell;
+use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::blocking::spi::{self};
+use embedded_hal::spi::{Mode, Phase, Polarity};
 use nalgebra::Vector3;
 
 use registers::{
@@ -10,57 +12,71 @@ use registers::{
     SignalPathReset,
 };
 
+pub const SPI_MODE: Mode = Mode {
+    polarity: Polarity::IdleHigh,
+    phase: Phase::CaptureOnSecondTransition,
+};
+
 pub trait Bus<E> {
-    fn write(&self, bytes: &[u8]) -> Result<(), E>;
-    fn write_read(&self, input: &[u8], output: &mut [u8]) -> Result<(), E>;
+    fn write(&mut self, reg: Register, value: u8) -> Result<(), E>;
+    fn read(&mut self, reg: Register) -> Result<u8, E>;
+    fn reads(&mut self, reg: Register, output: &mut [u8]) -> Result<(), E>;
 }
 
-pub trait DelayMs {
-    fn delay_ms(&self, ms: usize);
+pub struct SpiBus<SPI: spi::Transfer<u8> + spi::Write<u8>>(SPI);
+
+impl<SPI: spi::Transfer<u8> + spi::Write<u8>> From<SPI> for SpiBus<SPI> {
+    fn from(spi: SPI) -> SpiBus<SPI> {
+        SpiBus(spi)
+    }
+}
+
+impl<E, SPI: spi::Transfer<u8, Error = E> + spi::Write<u8, Error = E>> Bus<E> for SpiBus<SPI> {
+    fn write(&mut self, reg: Register, value: u8) -> Result<(), E> {
+        self.0.write(&[reg as u8, value])
+    }
+
+    fn read(&mut self, reg: Register) -> Result<u8, E> {
+        let mut value = [0u8];
+        self.0.write(&[reg as u8 | 0x80])?;
+        self.0.transfer(&mut value)?;
+        Ok(value[0])
+    }
+
+    fn reads(&mut self, reg: Register, output: &mut [u8]) -> Result<(), E> {
+        self.0.write(&[reg as u8 | 0x80])?;
+        self.0.transfer(output)?;
+        Ok(())
+    }
 }
 
 pub struct MPU6000<'a, E> {
-    bus: Cell<&'a dyn Bus<E>>,
-    delay: Cell<&'a dyn DelayMs>,
-    accelerometer_sensitive: Cell<AccelerometerSensitive>,
-    gyro_sensitive: Cell<GyroSensitive>,
+    bus: &'a mut dyn Bus<E>,
+    accelerometer_sensitive: AccelerometerSensitive,
+    gyro_sensitive: GyroSensitive,
     whoami: u8,
 }
 
 impl<'a, E> MPU6000<'a, E> {
-    pub fn write_byte(&self, reg: Register, byte: u8) -> Result<(), E> {
-        let bus = self.bus.get();
-        bus.write(&[reg as u8, byte])?;
-        Ok(())
-    }
-
-    pub fn read_byte(&self, reg: Register) -> Result<u8, E> {
-        let mut buf = [0u8; 1];
-        let bus = self.bus.get();
-        bus.write_read(&[reg as u8], &mut buf)?;
-        Ok(buf[0])
-    }
-
-    pub fn set_register_bit(&self, reg: Register, offset: usize, bit: bool) -> Result<(), E> {
-        let mut value = self.read_byte(reg)?;
+    pub fn set_register_bit(&mut self, reg: Register, offset: usize, bit: bool) -> Result<(), E> {
+        let mut value = self.bus.read(reg)?;
         if bit {
             value &= !(1u8 << offset);
         } else {
             value |= 1u8 << offset;
         }
-        self.write_byte(reg, value)
+        self.bus.write(reg, value)
     }
 
-    pub fn read_into(&self, reg: Register, buf: &mut [u8]) -> Result<(), E> {
-        let bus = self.bus.get();
-        bus.write_read(&[reg as u8], buf)
+    pub fn read_into(&mut self, reg: Register, buf: &mut [u8]) -> Result<(), E> {
+        self.bus.reads(reg, buf)
     }
 
     pub fn set_slave_address(&mut self, address: u8) {
         self.whoami = address
     }
 
-    pub(crate) fn read_vector3(&self, reg: Register) -> Result<Vector3<u32>, E> {
+    fn read_vector3(&mut self, reg: Register) -> Result<Vector3<u32>, E> {
         let mut buf = [0u8; 6];
         self.read_into(reg.into(), &mut buf)?;
         Ok(Vector3::<u32>::new(
@@ -70,41 +86,46 @@ impl<'a, E> MPU6000<'a, E> {
         ))
     }
 
-    pub fn verify(&self) -> Result<bool, E> {
-        let whoami = self.read_byte(Register::WhoAmI)?;
-        let product_id = self.read_byte(Register::ProductId)?;
-        Ok(whoami == self.whoami && ProductId::from(product_id) != ProductId::Unknown)
+    pub fn whoami(&mut self) -> Result<u8, E> {
+        self.bus.read(Register::WhoAmI)
+    }
+
+    pub fn product_id(&mut self) -> Result<u8, E> {
+        self.bus.read(Register::ProductId)
+    }
+
+    pub fn verify(&mut self) -> Result<bool, E> {
+        Ok(self.whoami()? == self.whoami && self.product_id()? != ProductId::Unknown as u8)
     }
 }
 
 impl<'a, E> MPU6000<'a, E> {
-    pub fn new(bus: &'a dyn Bus<E>, delay: &'a dyn DelayMs) -> Self {
+    pub fn new(bus: &'a mut dyn Bus<E>) -> Self {
         MPU6000 {
-            bus: Cell::new(bus),
-            delay: Cell::new(delay),
-            accelerometer_sensitive: Cell::new(AccelerometerSensitive::Sensitive16384),
-            gyro_sensitive: Cell::new(GyroSensitive::Sensitive131),
+            bus,
+            accelerometer_sensitive: AccelerometerSensitive::Sensitive16384,
+            gyro_sensitive: GyroSensitive::Sensitive131,
             whoami: 0x68,
         }
     }
 
     /// Required when connected via SPI
-    pub fn reset(&self) -> Result<(), E> {
+    pub fn reset<D: DelayMs<u8>>(&mut self, delay: &mut D) -> Result<(), E> {
         let reset_bit = PowerManagement1::DeviceReset as u8;
-        self.write_byte(Register::PowerManagement1, reset_bit)?;
-        self.delay.get().delay_ms(100);
+        self.bus.write(Register::PowerManagement1, reset_bit)?;
+        delay.delay_ms(150u8.into());
 
         let value = SignalPathReset::TemperatureReset as u8
             | SignalPathReset::AccelerometerReset as u8
             | SignalPathReset::GyroReset as u8;
-        self.write_byte(Register::SignalPathReset, value)?;
-        self.delay.get().delay_ms(100);
+        self.bus.write(Register::SignalPathReset, value)?;
+        delay.delay_ms(150u8.into());
         Ok(())
     }
 
-    pub fn wake(&self) -> Result<(), E> {
+    pub fn wake<D: DelayMs<u8>>(&mut self, delay: &mut D) -> Result<(), E> {
         self.set_register_bit(Register::PowerManagement1, 6, false)?;
-        self.delay.get().delay_ms(100);
+        delay.delay_ms(150u8.into());
         Ok(())
     }
 
@@ -113,18 +134,18 @@ impl<'a, E> MPU6000<'a, E> {
     }
 
     /// Sample Rate = Gyroscope Output Rate / (1 + divider)
-    pub fn set_sample_rate_divider(&self, divider: u8) -> Result<(), E> {
-        self.write_byte(Register::SampleRateDivider, divider)
+    pub fn set_sample_rate_divider(&mut self, divider: u8) -> Result<(), E> {
+        self.bus.write(Register::SampleRateDivider, divider)
     }
 
-    pub fn set_int_pin_config(&self, pin_config: IntPinConfig, enable: bool) -> Result<(), E> {
+    pub fn set_int_pin_config(&mut self, pin_config: IntPinConfig, enable: bool) -> Result<(), E> {
         self.set_register_bit(Register::IntPinConfig, pin_config as usize, enable)
     }
 }
 
 impl<'a, E> MPU6000<'a, E> {
     /// Temperature in centi degrees celcius
-    pub fn get_temperature(&self) -> Result<u16, E> {
+    pub fn get_temperature(&mut self) -> Result<u16, E> {
         let mut buf = [0u8; 2];
         self.read_into(Register::TemperatureHigh, &mut buf)?;
         Ok((u16::from_be_bytes(buf) as u32 * 100 / 340 + 3653) as u16)
@@ -132,69 +153,79 @@ impl<'a, E> MPU6000<'a, E> {
 }
 
 impl<'a, E> MPU6000<'a, E> {
-    pub fn set_gyro_sensitive(&self, sensitive: GyroSensitive) -> Result<(), E> {
-        self.write_byte(Register::GyroConfig, (sensitive as u8) << 3)?;
-        self.gyro_sensitive.set(sensitive);
+    pub fn set_gyro_sensitive(&mut self, sensitive: GyroSensitive) -> Result<(), E> {
+        self.bus
+            .write(Register::GyroConfig, (sensitive as u8) << 3)?;
+        self.gyro_sensitive = sensitive;
         Ok(())
     }
 
     /// Gyro readings in centi degree/s
-    pub fn get_gyro(&self) -> Result<Vector3<u32>, E> {
+    pub fn get_gyro(&mut self) -> Result<Vector3<u32>, E> {
         let vector = self.read_vector3(Register::GyroXHigh)?;
-        let sensitive = self.gyro_sensitive.get() as u32;
+        let sensitive = self.gyro_sensitive as u32;
         Ok(vector * 100 / sensitive)
     }
 }
 
 impl<'a, E> MPU6000<'a, E> {
-    pub fn set_accelerometer_sensitive(&self, sensitive: AccelerometerSensitive) -> Result<(), E> {
-        self.write_byte(Register::AccelerometerConfig, (sensitive as u8) << 3)?;
-        self.accelerometer_sensitive.set(sensitive);
+    pub fn set_accelerometer_sensitive(
+        &mut self,
+        sensitive: AccelerometerSensitive,
+    ) -> Result<(), E> {
+        self.bus
+            .write(Register::AccelerometerConfig, (sensitive as u8) << 3)?;
+        self.accelerometer_sensitive = sensitive;
         Ok(())
     }
 
     /// Accelerometer readings in cm/s^2
-    pub fn get_accelerator(&self) -> Result<Vector3<u32>, E> {
+    pub fn get_accelerator(&mut self) -> Result<Vector3<u32>, E> {
         let vector = self.read_vector3(Register::AccelerometerXHigh)?;
-        let sensitive = self.accelerometer_sensitive.get() as u32;
+        let sensitive = self.accelerometer_sensitive as u32;
         Ok(vector * 100 / sensitive)
     }
 }
 
 mod test {
-    use crate::{Bus, DelayMs};
+    use embedded_hal::blocking::spi::{Transfer, Write};
 
-    #[derive(Debug)]
-    enum Error {}
+    use crate::DelayMs;
 
-    struct StubBus {}
-    impl Bus<Error> for StubBus {
-        fn write(&self, _bytes: &[u8]) -> Result<(), Error> {
+    struct StubSPI {}
+
+    impl Write<u8> for StubSPI {
+        type Error = &'static str;
+        fn write(&mut self, _bytes: &[u8]) -> Result<(), &'static str> {
             Ok(())
         }
+    }
 
-        fn write_read(&self, _input: &[u8], _output: &mut [u8]) -> Result<(), Error> {
-            Ok(())
+    impl Transfer<u8> for StubSPI {
+        type Error = &'static str;
+        fn transfer<'w>(&mut self, bytes: &'w mut [u8]) -> Result<&'w [u8], &'static str> {
+            Ok(bytes)
         }
     }
 
     struct Nodelay {}
-    impl DelayMs for Nodelay {
-        fn delay_ms(&self, _ms: usize) {}
+    impl DelayMs<u8> for Nodelay {
+        fn delay_ms(&mut self, _ms: u8) {}
     }
 
     #[test]
-    fn test_functional() -> Result<(), Error> {
+    fn test_functional() -> Result<(), &'static str> {
         extern crate std;
 
         use crate::registers::{AccelerometerSensitive, GyroSensitive};
-        use crate::MPU6000;
+        use crate::{SpiBus, MPU6000};
 
-        let bus = StubBus {};
-        let delay = Nodelay {};
-        let mpu6000 = MPU6000::new(&bus, &delay);
-        mpu6000.reset()?;
-        mpu6000.wake()?;
+        let bus = StubSPI {};
+        let mut delay = Nodelay {};
+        let mut spi_bus: SpiBus<StubSPI> = bus.into();
+        let mut mpu6000 = MPU6000::new(&mut spi_bus);
+        mpu6000.reset(&mut delay)?;
+        mpu6000.wake(&mut delay)?;
         mpu6000.set_accelerometer_sensitive(accelerometer_sensitive!(+/-16g, 2048/LSB))?;
         mpu6000.set_gyro_sensitive(gyro_sensitive!(+/-2000dps, 16.4LSB/dps))?;
         Ok(())
