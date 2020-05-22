@@ -116,6 +116,7 @@ pub enum Register {
     SampleRateDivider = 0x19,
     AccelerometerConfig = 0x1c,
     GyroConfig = 0x1b,
+    FifoEnable = 0x23,
     IntPinConfig = 0x37,
     AccelerometerXHigh = 0x3b,
     AccelerometerXLow = 0x3c,
@@ -135,5 +136,8 @@ pub enum Register {
     UserControl = 0x6a,
     PowerManagement1 = 0x6b, // Register to control chip waking from sleep, enabling sensors, default: sleep
     PowerManagement2 = 0x6c, // Internal register to check slave addr
+    FifoCountHigh = 0x72,
+    FifoCountLow = 0x73,
+    FifoReadWrite = 0x74,
     WhoAmI = 0x75,
 }

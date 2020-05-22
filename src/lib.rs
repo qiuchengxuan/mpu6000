@@ -18,6 +18,31 @@ pub const SPI_MODE: Mode = Mode {
     phase: Phase::CaptureOnSecondTransition,
 };
 
+#[derive(Default)]
+pub struct FifoEnable {
+    pub temperature: bool,
+    pub x_g_force: bool,
+    pub y_g_force: bool,
+    pub z_g_force: bool,
+    pub acceleration: bool,
+    pub slave2: bool,
+    pub slave1: bool,
+    pub slave0: bool,
+}
+
+impl Into<u8> for FifoEnable {
+    fn into(self) -> u8 {
+        (self.temperature as u8) << 7
+            | (self.x_g_force as u8) << 6
+            | (self.y_g_force as u8) << 5
+            | (self.z_g_force as u8) << 4
+            | (self.acceleration as u8) << 3
+            | (self.slave2 as u8) << 2
+            | (self.slave1 as u8) << 1
+            | (self.slave0 as u8) << 0
+    }
+}
+
 pub trait Bus<E> {
     fn write(&mut self, reg: Register, value: u8) -> Result<(), E>;
     fn read(&mut self, reg: Register) -> Result<u8, E>;
@@ -128,6 +153,16 @@ impl<'a, E> MPU6000<'a, E> {
             u16::from_be_bytes([buf[2], buf[3]]) as u32,
             u16::from_be_bytes([buf[4], buf[5]]) as u32,
         ))
+    }
+
+    pub fn enable_fifo(&mut self, fifo_enable: FifoEnable) -> Result<(), E> {
+        let value: u8 = fifo_enable.into();
+        self.bus.write(Register::FifoEnable, value)
+    }
+
+    pub fn enable_fifo_buffer(&mut self) -> Result<(), E> {
+        let value = self.bus.read(Register::UserControl)?;
+        self.bus.write(Register::UserControl, value | 1 << 6)
     }
 
     pub fn whoami(&mut self) -> Result<u8, E> {
