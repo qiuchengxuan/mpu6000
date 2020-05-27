@@ -20,12 +20,23 @@ pub enum SignalPathReset {
     TemperatureReset = 1,
 }
 
-#[derive(Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum AccelerometerSensitive {
     Sensitive16384 = 0,
     Sensitive8192 = 1,
     Sensitive4096 = 2,
     Sensitive2048 = 3,
+}
+
+impl Into<f32> for AccelerometerSensitive {
+    fn into(self) -> f32 {
+        match self {
+            AccelerometerSensitive::Sensitive16384 => 16384.0,
+            AccelerometerSensitive::Sensitive8192 => 8192.0,
+            AccelerometerSensitive::Sensitive4096 => 4096.0,
+            AccelerometerSensitive::Sensitive2048 => 2048.0,
+        }
+    }
 }
 
 #[macro_export]
@@ -44,12 +55,23 @@ macro_rules! accelerometer_sensitive {
     };
 }
 
-#[derive(Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum GyroSensitive {
-    Sensitive131 = 1310,
-    Sensitive65_5 = 655,
-    Sensitive32_8 = 328,
-    Sensitive16_4 = 164,
+    Sensitive131 = 0,
+    Sensitive65_5 = 1,
+    Sensitive32_8 = 2,
+    Sensitive16_4 = 3,
+}
+
+impl Into<f32> for GyroSensitive {
+    fn into(self) -> f32 {
+        match self {
+            GyroSensitive::Sensitive131 => 131.0,
+            GyroSensitive::Sensitive65_5 => 65.5,
+            GyroSensitive::Sensitive32_8 => 32.8,
+            GyroSensitive::Sensitive16_4 => 16.4,
+        }
+    }
 }
 
 #[macro_export]
@@ -106,18 +128,16 @@ impl From<u8> for ProductId {
     }
 }
 
-pub enum IntPinConfig {
-    IntReadClear = 4,
-}
-
 #[derive(Copy, Clone, Debug)]
 pub enum Register {
     ProductId = 0xc,
     SampleRateDivider = 0x19,
-    AccelerometerConfig = 0x1c,
+    Configuration = 0x1a,
     GyroConfig = 0x1b,
+    AccelerometerConfig = 0x1c,
     FifoEnable = 0x23,
     IntPinConfig = 0x37,
+    InterruptEnable = 0x38,
     AccelerometerXHigh = 0x3b,
     AccelerometerXLow = 0x3c,
     AccelerometerYHigh = 0x3d,

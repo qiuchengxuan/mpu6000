@@ -1,7 +1,7 @@
 MPU6000
 =======
 
-Able to detect chip so far...
+Seems to be working...
 
 [DATASHEET][DATASHEET] | [REGISTER MAP][REGISTER_MAP]
 
