@@ -10,7 +10,7 @@ pub mod measurement;
 pub mod registers;
 
 use bus::Bus;
-use measurement::RawMeasurement;
+use measurement::{Measurement, Temperature};
 
 use registers::{
     AccelerometerSensitive, GyroSensitive, PowerManagement1, ProductId, Register, SignalPathReset,
@@ -34,10 +34,11 @@ pub enum ClockSource {
     Stop = 7,
 }
 
-pub const SPI_MODE: Mode = Mode {
-    polarity: Polarity::IdleHigh,
-    phase: Phase::CaptureOnSecondTransition,
-};
+pub const SPI_MODE: Mode =
+    Mode { polarity: Polarity::IdleHigh, phase: Phase::CaptureOnSecondTransition };
+
+pub type Measurements =
+    (Measurement<AccelerometerSensitive>, Temperature, Measurement<GyroSensitive>);
 
 #[derive(Default)]
 pub struct FifoEnable {
@@ -165,58 +166,41 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
         return Ok((high as u16) << 8 | low as u16);
     }
 
-    /// Temperature in centi degrees celcius
-    pub fn get_temperature(&mut self) -> Result<i32, E> {
-        let high = self.bus.read(Register::TemperatureHigh)? as u16;
-        let low = self.bus.read(Register::TemperatureLow)? as u16;
-        Ok((high << 8 | low) as i16 as i32 * 100 / 340 + 3653)
-    }
-
     pub fn set_gyro_sensitive(&mut self, sensitive: GyroSensitive) -> Result<(), E> {
-        self.bus
-            .write(Register::GyroConfig, (sensitive as u8) << 3)?;
+        self.bus.write(Register::GyroConfig, (sensitive as u8) << 3)?;
         self.gyro_sensitive = sensitive;
         Ok(())
     }
 
-    fn read_measurement(&mut self, high: Register, low: Register) -> Result<i16, E> {
-        let high = self.bus.read(high)? as u16;
-        let low = self.bus.read(low)? as u16;
-        Ok(((high << 8) | low) as i16)
+    pub fn read_acceleration(&mut self) -> Result<Measurement<AccelerometerSensitive>, E> {
+        let mut buffer = [0u8; 6];
+        self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
+        Ok(Measurement::new(&buffer, self.accelerometer_sensitive))
     }
 
-    pub fn get_gyro(&mut self) -> Result<RawMeasurement, E> {
-        let x = self.read_measurement(Register::GyroXHigh, Register::GyroXLow)?;
-        let y = self.read_measurement(Register::GyroYHigh, Register::GyroYLow)?;
-        let z = self.read_measurement(Register::GyroZHigh, Register::GyroZLow)?;
-        Ok(RawMeasurement {
-            x,
-            y,
-            z,
-            sensitive: self.gyro_sensitive.into(),
-        })
+    pub fn read_gyro(&mut self) -> Result<Measurement<GyroSensitive>, E> {
+        let mut buffer = [0u8; 6];
+        self.bus.reads(Register::GyroXHigh, &mut buffer)?;
+        Ok(Measurement::new(&buffer, self.gyro_sensitive))
+    }
+
+    pub fn read_measurements(&mut self) -> Result<Measurements, E> {
+        let mut buffer = [0u8; 14];
+        self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
+        Ok((
+            Measurement::new(&buffer, self.accelerometer_sensitive),
+            Temperature::new(buffer[6], buffer[7]),
+            Measurement::new(&buffer[8..], self.gyro_sensitive),
+        ))
     }
 
     pub fn set_accelerometer_sensitive(
         &mut self,
         sensitive: AccelerometerSensitive,
     ) -> Result<(), E> {
-        self.bus
-            .write(Register::AccelerometerConfig, (sensitive as u8) << 3)?;
+        self.bus.write(Register::AccelerometerConfig, (sensitive as u8) << 3)?;
         self.accelerometer_sensitive = sensitive;
         Ok(())
-    }
-
-    pub fn get_acceleration(&mut self) -> Result<RawMeasurement, E> {
-        let x = self.read_measurement(Register::AccelerometerXHigh, Register::AccelerometerXLow)?;
-        let y = self.read_measurement(Register::AccelerometerYHigh, Register::AccelerometerYLow)?;
-        let z = self.read_measurement(Register::AccelerometerZHigh, Register::AccelerometerZLow)?;
-        Ok(RawMeasurement {
-            x,
-            y,
-            z,
-            sensitive: self.accelerometer_sensitive.into(),
-        })
     }
 }
 
@@ -269,8 +253,7 @@ mod test {
     }
 
     #[test]
-    fn test_functional(
-    ) -> Result<(), crate::bus::SpiError<&'static str, &'static str, &'static str>> {
+    fn test_functional<'a>() {
         extern crate std;
 
         use crate::bus::SpiBus;
@@ -278,18 +261,18 @@ mod test {
         use crate::MPU6000;
 
         let spi = StubSPI {};
-        let output_pin = StubOutputPin {};
+        let mut output_pin = StubOutputPin {};
         let delay_ns = Nodelay {};
-        let spi_bus = SpiBus::new(spi, output_pin, delay_ns);
+        let spi_bus = SpiBus::new(spi, &mut output_pin, delay_ns);
         let mut mpu6000 = MPU6000::new(spi_bus);
         let mut delay = Nodelay {};
-        mpu6000.reset(&mut delay)?;
-        mpu6000.set_sleep(false)?;
-        mpu6000.set_accelerometer_sensitive(accelerometer_sensitive!(+/-16g, 2048/LSB))?;
-        mpu6000.set_gyro_sensitive(gyro_sensitive!(+/-2000dps, 16.4LSB/dps))?;
-        mpu6000.get_acceleration()?;
-        mpu6000.get_gyro()?;
-        Ok(())
+        mpu6000.reset(&mut delay).ok();
+        mpu6000.set_sleep(false).ok();
+        let sensitive = accelerometer_sensitive!(+/-16g, 2048/LSB);
+        mpu6000.set_accelerometer_sensitive(sensitive).ok();
+        let sensitive = gyro_sensitive!(+/-2000dps, 16.4LSB/dps);
+        mpu6000.set_gyro_sensitive(sensitive).ok();
+        mpu6000.read_measurements().ok();
     }
 
     #[test]
@@ -305,13 +288,7 @@ mod test {
             accelerometer_sensitive!(+/-4g, 8192/LSB),
             AccelerometerSensitive::Sensitive8192
         );
-        assert_eq!(
-            gyro_sensitive!(+/-1000dps, 32.8LSB/dps),
-            GyroSensitive::Sensitive32_8
-        );
-        assert_eq!(
-            gyro_sensitive!(+/-2000dps, 16.4LSB/dps),
-            GyroSensitive::Sensitive16_4
-        );
+        assert_eq!(gyro_sensitive!(+/-1000dps, 32.8LSB/dps), GyroSensitive::Sensitive32_8);
+        assert_eq!(gyro_sensitive!(+/-2000dps, 16.4LSB/dps), GyroSensitive::Sensitive16_4);
     }
 }

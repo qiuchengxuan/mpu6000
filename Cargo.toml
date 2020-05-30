@@ -1,6 +1,6 @@
 [package]
 name = "mpu6000"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["qiuchengxuan <qiuchengxuan@gmail.com>"]
 edition = "2018"
 
