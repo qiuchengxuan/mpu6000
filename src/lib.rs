@@ -69,6 +69,7 @@ pub struct MPU6000<BUS> {
     bus: BUS,
     accelerometer_sensitive: AccelerometerSensitive,
     gyro_sensitive: GyroSensitive,
+    dlpf_enabled: bool,
     whoami: u8,
 }
 
@@ -78,6 +79,7 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
             bus,
             accelerometer_sensitive: AccelerometerSensitive::Sensitive16384,
             gyro_sensitive: GyroSensitive::Sensitive131,
+            dlpf_enabled: false,
             whoami: 0x68,
         }
     }
@@ -110,13 +112,13 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     pub fn reset<D: DelayMs<u8>>(&mut self, delay: &mut D) -> Result<(), E> {
         let reset_bit = PowerManagement1::DeviceReset as u8;
         self.bus.write(Register::PowerManagement1, reset_bit)?;
-        delay.delay_ms(100u8.into());
+        delay.delay_ms(150u8.into());
 
         let value = SignalPathReset::TemperatureReset as u8
             | SignalPathReset::AccelerometerReset as u8
             | SignalPathReset::GyroReset as u8;
         self.bus.write(Register::SignalPathReset, value)?;
-        delay.delay_ms(100u8.into());
+        delay.delay_ms(150u8.into());
         Ok(())
     }
 
@@ -130,6 +132,7 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     }
 
     pub fn set_dlpf(&mut self, value: u8) -> Result<(), E> {
+        self.dlpf_enabled = 0 < value && value < 7;
         self.set_register(Register::Configuration, 0, 3, value as u8)
     }
 
@@ -137,9 +140,10 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
         self.set_register(Register::UserControl, 2, 1, disable as u8)
     }
 
-    /// Sample Rate = Gyroscope Output Rate / (1 + divider)
-    pub fn set_sample_rate_divider(&mut self, divider: u8) -> Result<(), E> {
-        self.bus.write(Register::SampleRateDivider, divider)
+    /// set DLPF before set sample rate
+    pub fn set_sample_rate(&mut self, rate: u16) -> Result<(), E> {
+        let divider = if !self.dlpf_enabled { 8_000 } else { 1_000 } / rate - 1;
+        self.bus.write(Register::SampleRateDivider, divider as u8)
     }
 
     pub fn set_int_pin_config(&mut self, pin_config: IntPinConfig, enable: bool) -> Result<(), E> {
