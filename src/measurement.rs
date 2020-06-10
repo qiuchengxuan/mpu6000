@@ -11,14 +11,11 @@ pub struct Measurement<S> {
 }
 
 impl<S: Copy> Measurement<S> {
-    pub fn new(bytes: &[u8], sensitive: S) -> Self {
-        if bytes.len() < 6 {
-            panic!("Insufficient bytes")
-        }
+    pub fn from_bytes(bytes: &[u8], sensitive: S) -> Self {
         Self {
-            x: (bytes[0] as i16) << 8 | bytes[1] as i16,
-            y: (bytes[2] as i16) << 8 | bytes[3] as i16,
-            z: (bytes[4] as i16) << 8 | bytes[5] as i16,
+            x: i16::from_be_bytes([bytes[0], bytes[1]]),
+            y: i16::from_be_bytes([bytes[2], bytes[3]]),
+            z: i16::from_be_bytes([bytes[4], bytes[5]]),
             sensitive,
         }
     }

@@ -179,22 +179,22 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     pub fn read_acceleration(&mut self) -> Result<Measurement<AccelerometerSensitive>, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok(Measurement::new(&buffer, self.accelerometer_sensitive))
+        Ok(Measurement::from_bytes(&buffer, self.accelerometer_sensitive))
     }
 
     pub fn read_gyro(&mut self) -> Result<Measurement<GyroSensitive>, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::GyroXHigh, &mut buffer)?;
-        Ok(Measurement::new(&buffer, self.gyro_sensitive))
+        Ok(Measurement::from_bytes(&buffer, self.gyro_sensitive))
     }
 
     pub fn read_measurements(&mut self) -> Result<Measurements, E> {
         let mut buffer = [0u8; 14];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
         Ok((
-            Measurement::new(&buffer, self.accelerometer_sensitive),
+            Measurement::from_bytes(&buffer, self.accelerometer_sensitive),
             Temperature::new(buffer[6], buffer[7]),
-            Measurement::new(&buffer[8..], self.gyro_sensitive),
+            Measurement::from_bytes(&buffer[8..], self.gyro_sensitive),
         ))
     }
 
