@@ -11,6 +11,15 @@ pub struct Measurement<S> {
 }
 
 impl<S: Copy> Measurement<S> {
+    pub fn from_array(array: &[i16], sensitive: S) -> Self {
+        Self {
+            x: i16::from_be(array[0]),
+            y: i16::from_be(array[1]),
+            z: i16::from_be(array[2]),
+            sensitive,
+        }
+    }
+
     pub fn from_bytes(bytes: &[u8], sensitive: S) -> Self {
         Self {
             x: i16::from_be_bytes([bytes[0], bytes[1]]),
@@ -54,6 +63,7 @@ impl<S: Into<f32>> Into<Vector3<f32>> for Measurement<S> {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Temperature(pub i16);
 
 impl Temperature {
