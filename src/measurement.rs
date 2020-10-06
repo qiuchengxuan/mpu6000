@@ -1,65 +1,46 @@
-use nalgebra::Vector3;
+use crate::registers::{AccelerometerSensitive, GyroSensitive};
 
-pub type Tuple3<T> = (T, T, T);
+pub struct Acceleration(pub i16, pub i16, pub i16);
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Measurement<S> {
-    pub x: i16,
-    pub y: i16,
-    pub z: i16,
-    pub sensitive: S,
-}
-
-impl<S: Copy> Measurement<S> {
-    pub fn from_array(array: &[i16], sensitive: S) -> Self {
-        Self {
-            x: i16::from_be(array[0]),
-            y: i16::from_be(array[1]),
-            z: i16::from_be(array[2]),
-            sensitive,
-        }
-    }
-
-    pub fn from_bytes(bytes: &[u8], sensitive: S) -> Self {
-        Self {
-            x: i16::from_be_bytes([bytes[0], bytes[1]]),
-            y: i16::from_be_bytes([bytes[2], bytes[3]]),
-            z: i16::from_be_bytes([bytes[4], bytes[5]]),
-            sensitive,
-        }
-    }
-
-    pub fn average(a: &Self, b: &Self) -> Self {
-        Self {
-            x: ((a.x + b.x) as i32 / 2) as i16,
-            y: ((a.y + b.y) as i32 / 2) as i16,
-            z: ((a.z + b.z) as i32 / 2) as i16,
-            sensitive: b.sensitive,
-        }
-    }
-
-    pub fn calibrated(&mut self, calibration: &Self) {
-        self.x -= calibration.x;
-        self.y -= calibration.y;
-        self.z -= calibration.z;
+impl Acceleration {
+    pub fn into_f32(self, sensitive: AccelerometerSensitive) -> (f32, f32, f32) {
+        let div: f32 = sensitive.into();
+        (self.0 as f32 / div, self.1 as f32 / div, self.2 as f32 / div)
     }
 }
 
-impl<S: Into<f32>> Into<Tuple3<f32>> for Measurement<S> {
-    fn into(self) -> Tuple3<f32> {
-        let sensitive: f32 = self.sensitive.into();
-        (self.x as f32 / sensitive, self.y as f32 / sensitive, self.z as f32 / sensitive)
+impl From<&[i16]> for Acceleration {
+    fn from(array: &[i16]) -> Self {
+        Self(i16::from_be(array[0]), i16::from_be(array[1]), i16::from_be(array[2]))
     }
 }
 
-impl<S: Into<f32>> Into<Vector3<f32>> for Measurement<S> {
-    fn into(self) -> Vector3<f32> {
-        let sensitive: f32 = self.sensitive.into();
-        Vector3::new(
-            self.x as f32 / sensitive,
-            self.y as f32 / sensitive,
-            self.z as f32 / sensitive,
-        )
+impl From<&[u8]> for Acceleration {
+    fn from(bytes: &[u8]) -> Self {
+        let array: &[i16] = unsafe { core::mem::transmute(bytes) };
+        array.into()
+    }
+}
+
+pub struct Gyro(pub i16, pub i16, pub i16);
+
+impl Gyro {
+    pub fn into_f32(self, sensitive: GyroSensitive) -> (f32, f32, f32) {
+        let div: f32 = sensitive.into();
+        (self.0 as f32 / div, self.1 as f32 / div, self.2 as f32 / div)
+    }
+}
+
+impl From<&[i16]> for Gyro {
+    fn from(array: &[i16]) -> Self {
+        Self(i16::from_be(array[0]), i16::from_be(array[1]), i16::from_be(array[2]))
+    }
+}
+
+impl From<&[u8]> for Gyro {
+    fn from(bytes: &[u8]) -> Self {
+        let array: &[i16] = unsafe { core::mem::transmute(bytes) };
+        array.into()
     }
 }
 

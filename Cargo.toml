@@ -1,6 +1,6 @@
 [package]
 name = "mpu6000"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["qiuchengxuan <qiuchengxuan@gmail.com>"]
 edition = "2018"
 
@@ -11,5 +11,4 @@ keywords = ["mpu6000", "imu", "embedded"]
 license = "Apache-2.0"
 
 [dependencies]
-embedded-hal = "0.2.3"
-nalgebra = {version = "0.21", default-features = false}
+embedded-hal = "0.2"

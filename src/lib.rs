@@ -1,5 +1,4 @@
 #![no_std]
-extern crate nalgebra;
 
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::spi::{Mode, Phase, Polarity};
@@ -10,7 +9,7 @@ pub mod measurement;
 pub mod registers;
 
 use bus::Bus;
-use measurement::{Measurement, Temperature};
+pub use measurement::{Acceleration, Gyro, Temperature};
 
 use registers::{
     AccelerometerSensitive, GyroSensitive, PowerManagement1, ProductId, Register, SignalPathReset,
@@ -36,9 +35,6 @@ pub enum ClockSource {
 
 pub const SPI_MODE: Mode =
     Mode { polarity: Polarity::IdleHigh, phase: Phase::CaptureOnSecondTransition };
-
-pub type Measurements =
-    (Measurement<AccelerometerSensitive>, Temperature, Measurement<GyroSensitive>);
 
 #[derive(Default)]
 pub struct FifoEnable {
@@ -176,26 +172,31 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
         Ok(())
     }
 
-    pub fn read_acceleration(&mut self) -> Result<Measurement<AccelerometerSensitive>, E> {
+    pub fn read_acceleration(&mut self) -> Result<Acceleration, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok(Measurement::from_bytes(&buffer, self.accelerometer_sensitive))
+        let value: [i16; 3] = unsafe { core::mem::transmute(buffer) };
+        Ok(value[..].into())
     }
 
-    pub fn read_gyro(&mut self) -> Result<Measurement<GyroSensitive>, E> {
+    pub fn read_gyro(&mut self) -> Result<Gyro, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::GyroXHigh, &mut buffer)?;
-        Ok(Measurement::from_bytes(&buffer, self.gyro_sensitive))
+        let value: [i16; 3] = unsafe { core::mem::transmute(buffer) };
+        Ok(value[..].into())
     }
 
-    pub fn read_measurements(&mut self) -> Result<Measurements, E> {
+    pub fn read_temperature(&mut self) -> Result<Temperature, E> {
+        let mut buffer = [0u8; 2];
+        self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
+        Ok(Temperature(i16::from_be_bytes([buffer[0], buffer[1]])))
+    }
+
+    pub fn read_all(&mut self) -> Result<(Acceleration, Temperature, Gyro), E> {
         let mut buffer = [0u8; 14];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok((
-            Measurement::from_bytes(&buffer, self.accelerometer_sensitive),
-            Temperature::new(buffer[6], buffer[7]),
-            Measurement::from_bytes(&buffer[8..], self.gyro_sensitive),
-        ))
+        let value: [i16; 7] = unsafe { core::mem::transmute(buffer) };
+        Ok((value[..3].into(), Temperature(i16::from_be(value[3])), value[4..].into()))
     }
 
     pub fn set_accelerometer_sensitive(
@@ -276,7 +277,7 @@ mod test {
         mpu6000.set_accelerometer_sensitive(sensitive).ok();
         let sensitive = gyro_sensitive!(+/-2000dps, 16.4LSB/dps);
         mpu6000.set_gyro_sensitive(sensitive).ok();
-        mpu6000.read_measurements().ok();
+        mpu6000.read_all().ok();
     }
 
     #[test]
