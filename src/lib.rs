@@ -10,10 +10,7 @@ pub mod registers;
 
 use bus::Bus;
 pub use measurement::{Acceleration, Gyro, Temperature};
-
-use registers::{
-    AccelerometerSensitive, GyroSensitive, PowerManagement1, ProductId, Register, SignalPathReset,
-};
+use registers::*;
 
 pub enum IntPinConfig {
     IntReadClear = 4,
@@ -63,21 +60,17 @@ impl Into<u8> for FifoEnable {
 
 pub struct MPU6000<BUS> {
     bus: BUS,
-    accelerometer_sensitive: AccelerometerSensitive,
-    gyro_sensitive: GyroSensitive,
     dlpf_enabled: bool,
     whoami: u8,
 }
 
 impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     pub fn new(bus: BUS) -> Self {
-        MPU6000 {
-            bus,
-            accelerometer_sensitive: AccelerometerSensitive::Sensitive16384,
-            gyro_sensitive: GyroSensitive::Sensitive131,
-            dlpf_enabled: false,
-            whoami: 0x68,
-        }
+        MPU6000 { bus, dlpf_enabled: false, whoami: 0x68 }
+    }
+
+    pub fn free(self) -> BUS {
+        self.bus
     }
 
     pub fn set_register(&mut self, reg: Register, offset: u8, len: u8, bits: u8) -> Result<(), E> {
@@ -167,9 +160,7 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     }
 
     pub fn set_gyro_sensitive(&mut self, sensitive: GyroSensitive) -> Result<(), E> {
-        self.bus.write(Register::GyroConfig, (sensitive as u8) << 3)?;
-        self.gyro_sensitive = sensitive;
-        Ok(())
+        self.bus.write(Register::GyroConfig, (sensitive as u8) << 3)
     }
 
     pub fn read_acceleration(&mut self) -> Result<Acceleration, E> {
@@ -203,9 +194,7 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
         &mut self,
         sensitive: AccelerometerSensitive,
     ) -> Result<(), E> {
-        self.bus.write(Register::AccelerometerConfig, (sensitive as u8) << 3)?;
-        self.accelerometer_sensitive = sensitive;
-        Ok(())
+        self.bus.write(Register::AccelerometerConfig, (sensitive as u8) << 3)
     }
 }
 
@@ -258,17 +247,14 @@ mod test {
     }
 
     #[test]
-    fn test_functional<'a>() {
+    fn test_functional() {
         extern crate std;
 
         use crate::bus::SpiBus;
         use crate::registers::{AccelerometerSensitive, GyroSensitive};
         use crate::MPU6000;
 
-        let spi = StubSPI {};
-        let mut output_pin = StubOutputPin {};
-        let delay_ns = Nodelay {};
-        let spi_bus = SpiBus::new(spi, &mut output_pin, delay_ns);
+        let spi_bus = SpiBus::new(StubSPI {}, StubOutputPin {}, Nodelay {});
         let mut mpu6000 = MPU6000::new(spi_bus);
         let mut delay = Nodelay {};
         mpu6000.reset(&mut delay).ok();

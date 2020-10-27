@@ -21,24 +21,28 @@ pub trait DelayNs<T> {
     fn delay_ns(&mut self, ns: T);
 }
 
-pub struct SpiBus<'a, SPI, CS, D> {
+pub struct SpiBus<SPI, CS, D> {
     spi: SPI,
-    cs: &'a mut CS,
+    cs: CS,
     delay: D,
 }
 
-impl<'a, SPI, CS, D> SpiBus<'a, SPI, CS, D>
+impl<'a, SPI, CS, D> SpiBus<SPI, CS, D>
 where
     SPI: spi::Transfer<u8> + spi::Write<u8>,
     CS: OutputPin,
     D: DelayNs<u16>,
 {
-    pub fn new(spi: SPI, cs: &'a mut CS, delay: D) -> Self {
+    pub fn new(spi: SPI, cs: CS, delay: D) -> Self {
         Self { spi, cs, delay }
+    }
+
+    pub fn free(self) -> (SPI, CS, D) {
+        (self.spi, self.cs, self.delay)
     }
 }
 
-impl<'a, WE, TE, OE, SPI, CS, D> SpiBus<'a, SPI, CS, D>
+impl<WE, TE, OE, SPI, CS, D> SpiBus<SPI, CS, D>
 where
     SPI: spi::Transfer<u8, Error = TE> + spi::Write<u8, Error = WE>,
     CS: OutputPin<Error = OE>,
@@ -49,7 +53,7 @@ where
     }
 }
 
-impl<'a, WE, TE, OE, SPI, CS, D> Bus for SpiBus<'a, SPI, CS, D>
+impl<WE, TE, OE, SPI, CS, D> Bus for SpiBus<SPI, CS, D>
 where
     SPI: spi::Transfer<u8, Error = TE> + spi::Write<u8, Error = WE>,
     CS: OutputPin<Error = OE>,
