@@ -1,7 +1,7 @@
 #![no_std]
 
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::spi::{Mode, Phase, Polarity};
+use embedded_hal::spi::{Mode, MODE_3};
 
 pub mod bus;
 pub mod measurement;
@@ -30,8 +30,7 @@ pub enum ClockSource {
     Stop = 7,
 }
 
-pub const SPI_MODE: Mode =
-    Mode { polarity: Polarity::IdleHigh, phase: Phase::CaptureOnSecondTransition };
+pub const SPI_MODE: Mode = MODE_3;
 
 #[derive(Default)]
 pub struct FifoEnable {
