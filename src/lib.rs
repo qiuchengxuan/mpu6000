@@ -198,11 +198,9 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
 }
 
 mod test {
-    use embedded_hal::blocking::delay::DelayMs;
+    use embedded_hal::blocking::delay::{DelayMs, DelayUs};
     use embedded_hal::blocking::spi::{Transfer, Write};
     use embedded_hal::digital::v2::OutputPin;
-
-    use crate::bus::DelayNs;
 
     struct StubSPI {}
 
@@ -241,8 +239,8 @@ mod test {
         fn delay_ms(&mut self, _ms: u8) {}
     }
 
-    impl DelayNs<u16> for Nodelay {
-        fn delay_ns(&mut self, _ns: u16) {}
+    impl DelayUs<u16> for Nodelay {
+        fn delay_us(&mut self, _ns: u16) {}
     }
 
     #[test]
