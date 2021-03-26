@@ -11,14 +11,17 @@ impl Acceleration {
 
 impl From<&[i16]> for Acceleration {
     fn from(array: &[i16]) -> Self {
-        Self(i16::from_be(array[0]), i16::from_be(array[1]), i16::from_be(array[2]))
+        Self(array[0], array[1], array[2])
     }
 }
 
 impl From<&[u8]> for Acceleration {
     fn from(bytes: &[u8]) -> Self {
-        let array: &[i16] = unsafe { core::mem::transmute(bytes) };
-        array.into()
+        let mut array: [i16; 3] = [0i16; 3];
+        for (i, bytes) in bytes[..6].chunks(2).enumerate() {
+            array[i] = i16::from_be_bytes([bytes[0], bytes[1]]);
+        }
+        Self(array[0], array[1], array[2])
     }
 }
 
@@ -33,19 +36,28 @@ impl Gyro {
 
 impl From<&[i16]> for Gyro {
     fn from(array: &[i16]) -> Self {
-        Self(i16::from_be(array[0]), i16::from_be(array[1]), i16::from_be(array[2]))
+        Self(array[0], array[1], array[2])
     }
 }
 
 impl From<&[u8]> for Gyro {
     fn from(bytes: &[u8]) -> Self {
-        let array: &[i16] = unsafe { core::mem::transmute(bytes) };
-        array.into()
+        let mut array: [i16; 3] = [0i16; 3];
+        for (i, bytes) in bytes[..6].chunks(2).enumerate() {
+            array[i] = i16::from_be_bytes([bytes[0], bytes[1]]);
+        }
+        Self(array[0], array[1], array[2])
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Temperature(pub i16);
+
+impl From<&[u8]> for Temperature {
+    fn from(bytes: &[u8]) -> Self {
+        Self(i16::from_be_bytes([bytes[0], bytes[1]]))
+    }
+}
 
 impl Temperature {
     pub fn new(high: u8, low: u8) -> Self {

@@ -165,28 +165,25 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     pub fn read_acceleration(&mut self) -> Result<Acceleration, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        let value: [i16; 3] = unsafe { core::mem::transmute(buffer) };
-        Ok(value[..].into())
+        Ok(buffer[..].into())
     }
 
     pub fn read_gyro(&mut self) -> Result<Gyro, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::GyroXHigh, &mut buffer)?;
-        let value: [i16; 3] = unsafe { core::mem::transmute(buffer) };
-        Ok(value[..].into())
+        Ok(buffer[..].into())
     }
 
     pub fn read_temperature(&mut self) -> Result<Temperature, E> {
         let mut buffer = [0u8; 2];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok(Temperature(i16::from_be_bytes([buffer[0], buffer[1]])))
+        Ok(buffer[..].into())
     }
 
     pub fn read_all(&mut self) -> Result<(Acceleration, Temperature, Gyro), E> {
         let mut buffer = [0u8; 14];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        let value: [i16; 7] = unsafe { core::mem::transmute(buffer) };
-        Ok((value[..3].into(), Temperature(i16::from_be(value[3])), value[4..].into()))
+        Ok((buffer[..6].into(), buffer[6..8].into(), buffer[8..].into()))
     }
 
     pub fn set_accelerometer_sensitive(
