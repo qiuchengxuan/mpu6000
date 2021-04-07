@@ -255,7 +255,7 @@ mod test {
         let mut delay = Nodelay {};
         mpu6000.reset(&mut delay).ok();
         mpu6000.set_sleep(false).ok();
-        let sensitive = accelerometer_sensitive!(+/-16g, 2048/LSB);
+        let sensitive = accelerometer_sensitive!(+/-16g, 2048LSB/g);
         mpu6000.set_accelerometer_sensitive(sensitive).ok();
         let sensitive = gyro_sensitive!(+/-2000dps, 16.4LSB/dps);
         mpu6000.set_gyro_sensitive(sensitive).ok();
@@ -268,11 +268,11 @@ mod test {
 
         use crate::registers::{AccelerometerSensitive, GyroSensitive};
         assert_eq!(
-            accelerometer_sensitive!(+/-2g, 16384/LSB),
+            accelerometer_sensitive!(+/-2g, 16384LSB/g),
             AccelerometerSensitive::Sensitive16384
         );
         assert_eq!(
-            accelerometer_sensitive!(+/-4g, 8192/LSB),
+            accelerometer_sensitive!(+/-4g, 8192LSB/g),
             AccelerometerSensitive::Sensitive8192
         );
         assert_eq!(gyro_sensitive!(+/-1000dps, 32.8LSB/dps), GyroSensitive::Sensitive32_8);

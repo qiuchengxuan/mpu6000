@@ -41,16 +41,16 @@ impl Into<f32> for AccelerometerSensitive {
 
 #[macro_export]
 macro_rules! accelerometer_sensitive {
-    (+/-2g, 16384/LSB) => {
+    (+/-2g, 16384LSB/g) => {
         AccelerometerSensitive::Sensitive16384
     };
-    (+/-4g, 8192/LSB) => {
+    (+/-4g, 8192LSB/g) => {
         AccelerometerSensitive::Sensitive8192
     };
-    (+/-8g, 4096/LSB) => {
+    (+/-8g, 4096LSB/g) => {
         AccelerometerSensitive::Sensitive4096
     };
-    (+/-16g, 2048/LSB) => {
+    (+/-16g, 2048LSB/g) => {
         AccelerometerSensitive::Sensitive2048
     };
 }
