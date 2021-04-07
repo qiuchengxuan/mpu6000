@@ -11,4 +11,4 @@ keywords = ["mpu6000", "imu", "embedded"]
 license = "Apache-2.0"
 
 [dependencies]
-embedded-hal = "0.2.4"
+embedded-hal = "0.2"

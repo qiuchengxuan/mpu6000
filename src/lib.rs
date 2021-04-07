@@ -8,7 +8,7 @@ pub mod measurement;
 #[macro_use]
 pub mod registers;
 
-use bus::Bus;
+use bus::RegAccess;
 pub use measurement::{Acceleration, Gyro, Temperature};
 use registers::*;
 
@@ -63,13 +63,9 @@ pub struct MPU6000<BUS> {
     whoami: u8,
 }
 
-impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
+impl<E, BUS: RegAccess<Error = E>> MPU6000<BUS> {
     pub fn new(bus: BUS) -> Self {
         MPU6000 { bus, dlpf_enabled: false, whoami: 0x68 }
-    }
-
-    pub fn free(self) -> BUS {
-        self.bus
     }
 
     pub fn set_register(&mut self, reg: Register, offset: u8, len: u8, bits: u8) -> Result<(), E> {
@@ -194,6 +190,12 @@ impl<E, BUS: Bus<Error = E>> MPU6000<BUS> {
     }
 }
 
+impl<BUS> MPU6000<BUS> {
+    pub fn free(self) -> BUS {
+        self.bus
+    }
+}
+
 mod test {
     use embedded_hal::blocking::delay::{DelayMs, DelayUs};
     use embedded_hal::blocking::spi::{Transfer, Write};
@@ -236,8 +238,8 @@ mod test {
         fn delay_ms(&mut self, _ms: u8) {}
     }
 
-    impl DelayUs<u16> for Nodelay {
-        fn delay_us(&mut self, _ns: u16) {}
+    impl DelayUs<u8> for Nodelay {
+        fn delay_us(&mut self, _us: u8) {}
     }
 
     #[test]
