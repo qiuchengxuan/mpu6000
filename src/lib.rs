@@ -1,12 +1,12 @@
 #![no_std]
 
-use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::spi::{Mode, MODE_3};
-
 pub mod bus;
 pub mod measurement;
 #[macro_use]
 pub mod registers;
+
+use embedded_hal::blocking::delay::DelayMs;
+use embedded_hal::spi::{Mode, MODE_3};
 
 use bus::RegAccess;
 pub use measurement::{Acceleration, Gyro, Temperature};
@@ -161,25 +161,31 @@ impl<E, BUS: RegAccess<Error = E>> MPU6000<BUS> {
     pub fn read_acceleration(&mut self) -> Result<Acceleration, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok(buffer[..].into())
+        Ok((&buffer).into())
     }
 
     pub fn read_gyro(&mut self) -> Result<Gyro, E> {
         let mut buffer = [0u8; 6];
         self.bus.reads(Register::GyroXHigh, &mut buffer)?;
-        Ok(buffer[..].into())
+        Ok((&buffer).into())
     }
 
     pub fn read_temperature(&mut self) -> Result<Temperature, E> {
         let mut buffer = [0u8; 2];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok(buffer[..].into())
+        Ok((&buffer).into())
     }
 
     pub fn read_all(&mut self) -> Result<(Acceleration, Temperature, Gyro), E> {
         let mut buffer = [0u8; 14];
         self.bus.reads(Register::AccelerometerXHigh, &mut buffer)?;
-        Ok((buffer[..6].into(), buffer[6..8].into(), buffer[8..].into()))
+        let mut array = [0i16; 7];
+        for i in 0..7 {
+            array[i] = i16::from_be_bytes([buffer[i * 2], buffer[i * 2 + 1]])
+        }
+        let accel = [array[0], array[1], array[2]];
+        let gyro = [array[4], array[5], array[6]];
+        Ok((Acceleration(accel), Temperature(array[3]), Gyro(gyro)))
     }
 
     pub fn set_accelerometer_sensitive(

@@ -1,8 +1,8 @@
 [package]
 name = "mpu6000"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["qiuchengxuan <qiuchengxuan@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 description = "Platform agnostic driver for MPU6000 6-axis IMU"
 repository = "https://github.com/qiuchengxuan/mpu6000"
@@ -12,3 +12,4 @@ license = "Apache-2.0"
 
 [dependencies]
 embedded-hal = "0.2"
+fixed-point = { version = "1.0", default-features = false }
